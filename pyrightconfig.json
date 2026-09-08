@@ -1,0 +1,7 @@
+{
+  "include": ["*.py", "tabs"],
+  "extraPaths": ["."],
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none",
+  "reportImplicitRelativeImport": "none"
+}
