@@ -65,6 +65,23 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_rental_rent_date ON rental(rent_date);
             CREATE INDEX IF NOT EXISTS idx_rental_return_date ON rental(return_date);
+
+            CREATE TABLE IF NOT EXISTS stat_override (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                equipment_id INTEGER NOT NULL,
+                equipment_name TEXT NOT NULL,
+                stat_month TEXT NOT NULL,
+                rent_count INTEGER NOT NULL DEFAULT 0 CHECK (rent_count >= 0),
+                return_count INTEGER NOT NULL DEFAULT 0 CHECK (return_count >= 0),
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                UNIQUE(equipment_id, stat_month)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_stat_override_month
+                ON stat_override(stat_month);
+            CREATE INDEX IF NOT EXISTS idx_stat_override_equipment
+                ON stat_override(equipment_id, stat_month);
             """
         )
         columns = {
@@ -295,118 +312,371 @@ def list_active_rentals(equipment_id):
         ).fetchall()
 
 
+
+def _effective_monthly_cte():
+    return """
+        WITH rent_months AS (
+            SELECT equipment_id,
+                   MAX(equipment_name) AS equipment_name,
+                   substr(rent_date,1,7) AS stat_month,
+                   COUNT(*) AS rent_count
+            FROM rental
+            GROUP BY equipment_id, stat_month
+        ),
+        return_months AS (
+            SELECT equipment_id,
+                   MAX(equipment_name) AS equipment_name,
+                   substr(return_date,1,7) AS stat_month,
+                   COUNT(*) AS return_count
+            FROM rental
+            WHERE return_date IS NOT NULL
+            GROUP BY equipment_id, stat_month
+        ),
+        base_monthly AS (
+            SELECT COALESCE(rent_months.equipment_id, return_months.equipment_id)
+                       AS equipment_id,
+                   COALESCE(rent_months.equipment_name, return_months.equipment_name)
+                       AS equipment_name,
+                   COALESCE(rent_months.stat_month, return_months.stat_month)
+                       AS stat_month,
+                   COALESCE(rent_months.rent_count, 0) AS base_rent_count,
+                   COALESCE(return_months.return_count, 0) AS base_return_count
+            FROM rent_months
+            LEFT JOIN return_months
+              ON return_months.equipment_id = rent_months.equipment_id
+             AND return_months.stat_month = rent_months.stat_month
+            UNION ALL
+            SELECT return_months.equipment_id,
+                   return_months.equipment_name,
+                   return_months.stat_month,
+                   0 AS base_rent_count,
+                   return_months.return_count AS base_return_count
+            FROM return_months
+            LEFT JOIN rent_months
+              ON rent_months.equipment_id = return_months.equipment_id
+             AND rent_months.stat_month = return_months.stat_month
+            WHERE rent_months.equipment_id IS NULL
+        ),
+        monthly_keys AS (
+            SELECT equipment_id, stat_month FROM base_monthly
+            UNION
+            SELECT equipment_id, stat_month FROM stat_override
+        ),
+        stat_names AS (
+            SELECT monthly_keys.equipment_id,
+                   COALESCE(
+                       equipment.name,
+                       (SELECT rental.equipment_name FROM rental
+                        WHERE rental.equipment_id = monthly_keys.equipment_id
+                        ORDER BY rental.rent_date DESC, rental.id DESC LIMIT 1),
+                       (SELECT stat_override.equipment_name FROM stat_override
+                        WHERE stat_override.equipment_id = monthly_keys.equipment_id
+                        ORDER BY stat_override.updated_at DESC,
+                                 stat_override.id DESC LIMIT 1)
+                   ) AS equipment_name
+            FROM monthly_keys
+            LEFT JOIN equipment ON equipment.id = monthly_keys.equipment_id
+            GROUP BY monthly_keys.equipment_id
+        ),
+        effective_monthly AS (
+            SELECT monthly_keys.equipment_id,
+                   stat_names.equipment_name,
+                   monthly_keys.stat_month,
+                   base_monthly.equipment_id IS NOT NULL AS base_exists,
+                   COALESCE(base_monthly.base_rent_count, 0) AS base_rent_count,
+                   COALESCE(base_monthly.base_return_count, 0)
+                       AS base_return_count,
+                   stat_override.rent_count AS override_rent_count,
+                   stat_override.return_count AS override_return_count,
+                   COALESCE(stat_override.rent_count,
+                            base_monthly.base_rent_count, 0) AS rent_count,
+                   COALESCE(stat_override.return_count,
+                            base_monthly.base_return_count, 0) AS return_count,
+                   CASE
+                       WHEN stat_override.id IS NULL THEN '자동'
+                       WHEN stat_override.rent_count = 0
+                        AND stat_override.return_count = 0 THEN '제거됨'
+                       ELSE '수정됨'
+                   END AS source_status,
+                   equipment.id IS NOT NULL AS is_current,
+                   (SELECT COUNT(*) FROM equipment numbered
+                    WHERE numbered.id <= monthly_keys.equipment_id)
+                       AS display_number
+            FROM monthly_keys
+            LEFT JOIN base_monthly
+              ON base_monthly.equipment_id = monthly_keys.equipment_id
+             AND base_monthly.stat_month = monthly_keys.stat_month
+            LEFT JOIN stat_override
+              ON stat_override.equipment_id = monthly_keys.equipment_id
+             AND stat_override.stat_month = monthly_keys.stat_month
+            LEFT JOIN stat_names
+              ON stat_names.equipment_id = monthly_keys.equipment_id
+            LEFT JOIN equipment
+              ON equipment.id = monthly_keys.equipment_id
+        )
+    """
+
+
+def _base_monthly_counts(conn, equipment_id, stat_month):
+    row = conn.execute(
+        _effective_monthly_cte()
+        + """SELECT base_exists, base_rent_count, base_return_count
+             FROM effective_monthly
+             WHERE equipment_id = ? AND stat_month = ?""",
+        (equipment_id, stat_month),
+    ).fetchone()
+    if not row or not row["base_exists"]:
+        return None
+    return row["base_rent_count"], row["base_return_count"]
+
+
+def _stat_equipment_name(conn, equipment_id):
+    row = conn.execute(
+        "SELECT name FROM equipment WHERE id = ?", (equipment_id,)
+    ).fetchone()
+    if row:
+        return row["name"]
+    row = conn.execute(
+        """SELECT equipment_name FROM rental
+           WHERE equipment_id = ?
+           ORDER BY rent_date DESC, id DESC LIMIT 1""",
+        (equipment_id,),
+    ).fetchone()
+    if row:
+        return row["equipment_name"]
+    row = conn.execute(
+        """SELECT equipment_name FROM stat_override
+           WHERE equipment_id = ?
+           ORDER BY updated_at DESC, id DESC LIMIT 1""",
+        (equipment_id,),
+    ).fetchone()
+    return row["equipment_name"] if row else None
+
+
+def list_effective_monthly_stats():
+    with db() as conn:
+        return conn.execute(
+            _effective_monthly_cte()
+            + """SELECT * FROM effective_monthly
+                 ORDER BY stat_month DESC, equipment_name, equipment_id"""
+        ).fetchall()
+
+
+def add_stat_override(equipment_id, stat_month, rent_count, return_count):
+    if rent_count < 0 or return_count < 0:
+        return False, "건수는 0 이상의 숫자로 입력하세요."
+    if rent_count == 0 and return_count == 0:
+        return False, "대여 또는 반납 건수를 1건 이상 입력하세요."
+    with db() as conn:
+        exists = conn.execute(
+            _effective_monthly_cte()
+            + """SELECT 1 FROM effective_monthly
+                 WHERE equipment_id = ? AND stat_month = ?""",
+            (equipment_id, stat_month),
+        ).fetchone()
+        if exists:
+            return False, "이미 존재하는 통계 월입니다. 변경 저장을 사용하세요."
+        name = _stat_equipment_name(conn, equipment_id)
+        if not name:
+            return False, "장비를 찾을 수 없습니다."
+        conn.execute(
+            """INSERT INTO stat_override
+               (equipment_id, equipment_name, stat_month, rent_count, return_count)
+               VALUES (?, ?, ?, ?, ?)""",
+            (equipment_id, name, stat_month, rent_count, return_count),
+        )
+    return True, "통계 월이 추가되었습니다."
+
+
+def save_stat_override(equipment_id, stat_month, rent_count, return_count):
+    if rent_count < 0 or return_count < 0:
+        return False, "건수는 0 이상의 숫자로 입력하세요."
+    with db() as conn:
+        base_counts = _base_monthly_counts(conn, equipment_id, stat_month)
+        existing = conn.execute(
+            """SELECT 1 FROM stat_override
+               WHERE equipment_id = ? AND stat_month = ?""",
+            (equipment_id, stat_month),
+        ).fetchone()
+        if base_counts is None and not existing:
+            return False, "저장할 통계를 찾을 수 없습니다."
+        if base_counts == (rent_count, return_count):
+            conn.execute(
+                """DELETE FROM stat_override
+                   WHERE equipment_id = ? AND stat_month = ?""",
+                (equipment_id, stat_month),
+            )
+            return True, "자동 통계로 복원되었습니다."
+        name = _stat_equipment_name(conn, equipment_id)
+        if not name:
+            return False, "장비를 찾을 수 없습니다."
+        conn.execute(
+            """INSERT INTO stat_override
+               (equipment_id, equipment_name, stat_month, rent_count, return_count)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(equipment_id, stat_month) DO UPDATE SET
+                   equipment_name = excluded.equipment_name,
+                   rent_count = excluded.rent_count,
+                   return_count = excluded.return_count,
+                   updated_at = datetime('now','localtime')""",
+            (equipment_id, name, stat_month, rent_count, return_count),
+        )
+    return True, "통계가 저장되었습니다."
+
+
+def remove_stat_override(equipment_id, stat_month):
+    with db() as conn:
+        base_counts = _base_monthly_counts(conn, equipment_id, stat_month)
+        if base_counts is None:
+            existing = conn.execute(
+                """SELECT 1 FROM stat_override
+                   WHERE equipment_id = ? AND stat_month = ?""",
+                (equipment_id, stat_month),
+            ).fetchone()
+            if not existing:
+                return False, "제거할 통계를 찾을 수 없습니다."
+            conn.execute(
+                """DELETE FROM stat_override
+                   WHERE equipment_id = ? AND stat_month = ?""",
+                (equipment_id, stat_month),
+            )
+            return True, "추가한 통계 월이 제거되었습니다."
+        name = _stat_equipment_name(conn, equipment_id)
+        if not name:
+            return False, "장비를 찾을 수 없습니다."
+        conn.execute(
+            """INSERT INTO stat_override
+               (equipment_id, equipment_name, stat_month, rent_count, return_count)
+               VALUES (?, ?, ?, 0, 0)
+               ON CONFLICT(equipment_id, stat_month) DO UPDATE SET
+                   equipment_name = excluded.equipment_name,
+                   rent_count = 0,
+                   return_count = 0,
+                   updated_at = datetime('now','localtime')""",
+            (equipment_id, name, stat_month),
+        )
+    return True, "자동 통계가 제거됨으로 표시되었습니다."
+
+
+def reset_stat_overrides():
+    with db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM stat_override").fetchone()[0]
+        conn.execute("DELETE FROM stat_override")
+    return count
+
+
 def yearly_stats():
     with db() as conn:
-        rents = dict(
-            conn.execute(
-                "SELECT substr(rent_date,1,4) y, COUNT(*) c FROM rental GROUP BY y"
-            ).fetchall()
-        )
-        rets = dict(
-            conn.execute(
-                """SELECT substr(return_date,1,4) y, COUNT(*) c FROM rental
-                   WHERE return_date IS NOT NULL GROUP BY y"""
-            ).fetchall()
-        )
-    years = sorted(set(rents) | set(rets), reverse=True)
-    return [(y, rents.get(y, 0), rets.get(y, 0)) for y in years]
+        rows = conn.execute(
+            _effective_monthly_cte()
+            + """SELECT substr(stat_month,1,4) AS year,
+                        SUM(rent_count) AS rent_count,
+                        SUM(return_count) AS return_count
+                 FROM effective_monthly
+                 GROUP BY year
+                 HAVING SUM(effective_monthly.rent_count) > 0
+                    OR SUM(effective_monthly.return_count) > 0
+                 ORDER BY year DESC"""
+        ).fetchall()
+    return [(row["year"], row["rent_count"], row["return_count"]) for row in rows]
 
 
 def monthly_stats(year):
     with db() as conn:
-        rents = dict(
-            conn.execute(
-                """SELECT CAST(substr(rent_date,6,2) AS INT) m, COUNT(*) c
-                   FROM rental WHERE substr(rent_date,1,4)=? GROUP BY m""",
-                (year,),
-            ).fetchall()
-        )
-        rets = dict(
-            conn.execute(
-                """SELECT CAST(substr(return_date,6,2) AS INT) m, COUNT(*) c
-                   FROM rental
-                   WHERE return_date IS NOT NULL AND substr(return_date,1,4)=?
-                   GROUP BY m""",
-                (year,),
-            ).fetchall()
-        )
-    return [(m, rents.get(m, 0), rets.get(m, 0)) for m in range(1, 13)]
+        rows = conn.execute(
+            _effective_monthly_cte()
+            + """SELECT CAST(substr(stat_month,6,2) AS INT) AS month,
+                        SUM(rent_count) AS rent_count,
+                        SUM(return_count) AS return_count
+                 FROM effective_monthly
+                 WHERE substr(stat_month,1,4) = ?
+                 GROUP BY month""",
+            (year,),
+        ).fetchall()
+    stats = {row["month"]: row for row in rows}
+    return [
+        (m, stats[m]["rent_count"], stats[m]["return_count"])
+        if m in stats else (m, 0, 0)
+        for m in range(1, 13)
+    ]
 
 
 def stat_years():
     with db() as conn:
         rows = conn.execute(
-            """SELECT substr(rent_date,1,4) y FROM rental
-               UNION
-               SELECT substr(return_date,1,4) FROM rental
-               WHERE return_date IS NOT NULL
-               ORDER BY y DESC"""
+            _effective_monthly_cte()
+            + """SELECT substr(stat_month,1,4) AS year
+                 FROM effective_monthly
+                 GROUP BY year
+                 HAVING SUM(effective_monthly.rent_count) > 0
+                    OR SUM(effective_monthly.return_count) > 0
+                 ORDER BY year DESC"""
         ).fetchall()
-    return [r[0] for r in rows]
+    return [r["year"] for r in rows]
 
 
 def equipment_stat_items():
     with db() as conn:
         return conn.execute(
-            """WITH stat_items AS (
-                   SELECT equipment_id, equipment_name FROM rental
-                   GROUP BY equipment_id, equipment_name
-                   UNION
-                   SELECT id, name FROM equipment
-               )
-               SELECT stat_items.equipment_id,
-                      stat_items.equipment_name,
-                      equipment.id IS NOT NULL AS is_current,
-                      (SELECT COUNT(*) FROM equipment numbered
-                       WHERE numbered.id <= stat_items.equipment_id)
-                          AS display_number
-               FROM stat_items
-               LEFT JOIN equipment
-                 ON equipment.id = stat_items.equipment_id
-               ORDER BY stat_items.equipment_name, stat_items.equipment_id"""
+            _effective_monthly_cte()
+            + """SELECT equipment_id,
+                        equipment_name,
+                        is_current,
+                        display_number
+                 FROM effective_monthly
+                 GROUP BY equipment_id, equipment_name
+                 UNION
+                 SELECT id,
+                        name,
+                        1 AS is_current,
+                        (SELECT COUNT(*) FROM equipment numbered
+                         WHERE numbered.id <= equipment.id) AS display_number
+                 FROM equipment
+                 ORDER BY equipment_name, equipment_id"""
         ).fetchall()
 
 
 def equipment_totals():
     with db() as conn:
         return conn.execute(
-            """SELECT rental.equipment_id,
-                       rental.equipment_name,
-                       equipment.id IS NOT NULL AS is_current,
-                       (SELECT COUNT(*) FROM equipment numbered
-                        WHERE numbered.id <= rental.equipment_id)
-                           AS display_number,
-                       COUNT(*) AS rent_count,
-                       SUM(CASE WHEN return_date IS NULL THEN 1 ELSE 0 END)
-                           AS active_count,
-                       MAX(rent_date) AS last_rent
-               FROM rental
-               LEFT JOIN equipment ON equipment.id = rental.equipment_id
-               GROUP BY rental.equipment_id, rental.equipment_name
-               ORDER BY rent_count DESC, rental.equipment_name,
-                        rental.equipment_id"""
+            _effective_monthly_cte()
+            + """SELECT effective_monthly.equipment_id,
+                        effective_monthly.equipment_name,
+                        effective_monthly.is_current,
+                        effective_monthly.display_number,
+                        SUM(effective_monthly.rent_count) AS rent_count,
+                        SUM(effective_monthly.return_count) AS return_count,
+                        (SELECT COUNT(*) FROM rental
+                         WHERE rental.equipment_id = effective_monthly.equipment_id
+                           AND rental.return_date IS NULL) AS active_count,
+                        MAX(CASE WHEN effective_monthly.rent_count > 0
+                                 THEN effective_monthly.stat_month END) AS last_rent
+                 FROM effective_monthly
+                 GROUP BY effective_monthly.equipment_id,
+                          effective_monthly.equipment_name
+                 HAVING SUM(effective_monthly.rent_count) > 0
+                    OR SUM(effective_monthly.return_count) > 0
+                    OR (SELECT COUNT(*) FROM rental
+                        WHERE rental.equipment_id = effective_monthly.equipment_id
+                          AND rental.return_date IS NULL) > 0
+                 ORDER BY rent_count DESC, equipment_name, equipment_id"""
         ).fetchall()
 
 
 def monthly_stats_by_equipment(year, equipment_id):
     with db() as conn:
-        rents = dict(
-            conn.execute(
-                """SELECT CAST(substr(rent_date,6,2) AS INT) m, COUNT(*) c
-                    FROM rental
-                    WHERE substr(rent_date,1,4)=? AND equipment_id=?
-                    GROUP BY m""",
-                (year, equipment_id),
-            ).fetchall()
-        )
-        rets = dict(
-            conn.execute(
-                """SELECT CAST(substr(return_date,6,2) AS INT) m, COUNT(*) c
-                    FROM rental
-                    WHERE return_date IS NOT NULL
-                      AND substr(return_date,1,4)=? AND equipment_id=?
-                    GROUP BY m""",
-                (year, equipment_id),
-            ).fetchall()
-        )
-    return [(m, rents.get(m, 0), rets.get(m, 0)) for m in range(1, 13)]
+        rows = conn.execute(
+            _effective_monthly_cte()
+            + """SELECT CAST(substr(stat_month,6,2) AS INT) AS month,
+                        rent_count,
+                        return_count
+                 FROM effective_monthly
+                 WHERE substr(stat_month,1,4) = ? AND equipment_id = ?""",
+            (year, equipment_id),
+        ).fetchall()
+    stats = {row["month"]: row for row in rows}
+    return [
+        (m, stats[m]["rent_count"], stats[m]["return_count"])
+        if m in stats else (m, 0, 0)
+        for m in range(1, 13)
+    ]
