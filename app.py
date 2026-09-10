@@ -50,7 +50,7 @@ class RentalApp(tk.Tk):
 
         notebook.add(self.home_tab, text=" 홈 ")
         notebook.add(self.equipment_tab, text=" 장비 관리 ")
-        notebook.add(self.rental_tab, text=" 대여 관리 ")
+        notebook.add(self.rental_tab, text=" 대여 정보 ")
         notebook.add(self.renter_tab, text=" 대여자 관리 ")
         notebook.add(self.stats_tab, text=" 대여 통계 ")
 
