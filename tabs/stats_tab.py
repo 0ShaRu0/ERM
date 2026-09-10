@@ -15,6 +15,8 @@ class StatsTab(ttk.Frame):
         self._all_data = None
         self._eq_data = None
         self._equipment_map = {}
+        self._edit_equipment_map = {}
+        self._selected_stat_key = None
 
         export_frame = ttk.LabelFrame(self, text="통계 파일 출력", padding=8)
         export_frame.pack(fill="x", pady=(0, 8))
@@ -42,11 +44,14 @@ class StatsTab(ttk.Frame):
 
         page_all = ttk.Frame(self.notebook, padding=8)
         page_eq = ttk.Frame(self.notebook, padding=8)
+        page_edit = ttk.Frame(self.notebook, padding=8)
         self.notebook.add(page_all, text=" 전체 통계 ")
         self.notebook.add(page_eq, text=" 장비별 통계 ")
+        self.notebook.add(page_edit, text=" 통계 편집 ")
 
         self._build_all(page_all)
         self._build_equipment(page_eq)
+        self._build_editor(page_edit)
         self.refresh()
 
     def _build_all(self, page):
@@ -200,6 +205,79 @@ class StatsTab(ttk.Frame):
         r_ysb.pack(side="right", fill="y")
         self.rank_tree.bind("<<TreeviewSelect>>", self._on_rank_select)
 
+    def _build_editor(self, page):
+        form = ttk.LabelFrame(page, text="통계 편집", padding=8)
+        form.pack(fill="x")
+
+        ttk.Label(form, text="장비:").grid(row=0, column=0, sticky="w")
+        self.edit_equipment_var = tk.StringVar()
+        self.edit_equipment_combo = ttk.Combobox(
+            form, textvariable=self.edit_equipment_var, state="readonly", width=26
+        )
+        self.edit_equipment_combo.grid(row=0, column=1, padx=(4, 10), sticky="w")
+
+        ttk.Label(form, text="통계 월:").grid(row=0, column=2, sticky="w")
+        self.stat_month_var = tk.StringVar(value=date.today().isoformat()[:7])
+        ttk.Entry(form, textvariable=self.stat_month_var, width=9).grid(
+            row=0, column=3, padx=(4, 10), sticky="w"
+        )
+
+        ttk.Label(form, text="대여:").grid(row=0, column=4, sticky="w")
+        self.stat_rent_var = tk.StringVar(value="0")
+        ttk.Entry(form, textvariable=self.stat_rent_var, width=6).grid(
+            row=0, column=5, padx=(4, 10), sticky="w"
+        )
+
+        ttk.Label(form, text="반납:").grid(row=0, column=6, sticky="w")
+        self.stat_return_var = tk.StringVar(value="0")
+        ttk.Entry(form, textvariable=self.stat_return_var, width=6).grid(
+            row=0, column=7, padx=(4, 0), sticky="w"
+        )
+
+        actions = ttk.Frame(form)
+        actions.grid(row=1, column=0, columnspan=8, sticky="w", pady=(8, 0))
+        ttk.Button(actions, text="추가", command=self._add_override).pack(side="left")
+        ttk.Button(actions, text="변경 저장", command=self._save_override).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(actions, text="제거", command=self._remove_override).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(actions, text="초기화", command=self._reset_overrides).pack(
+            side="left", padx=(6, 0)
+        )
+
+        ttk.Label(
+            form,
+            text=(
+                "실제 대여 이력은 보존됩니다. 초기화하면 수정/제거 표시를 지우고 "
+                "자동 통계로 복원합니다."
+            ),
+            foreground="#555555",
+        ).grid(row=2, column=0, columnspan=8, sticky="w", pady=(8, 0))
+
+        list_frame = ttk.LabelFrame(page, text="월별 장비 통계", padding=6)
+        list_frame.pack(fill="both", expand=True, pady=(10, 0))
+        columns = ("equip", "month", "rent", "return", "status")
+        self.override_tree = ttk.Treeview(
+            list_frame, columns=columns, show="headings", selectmode="browse"
+        )
+        for col, text, width in [
+            ("equip", "장비", 260),
+            ("month", "통계 월", 90),
+            ("rent", "대여", 75),
+            ("return", "반납", 75),
+            ("status", "상태", 80),
+        ]:
+            self.override_tree.heading(col, text=text)
+            anchor = "center" if col in ("month", "rent", "return", "status") else "w"
+            self.override_tree.column(col, width=width, anchor=anchor)
+        ysb = ttk.Scrollbar(list_frame, orient="vertical", command=self.override_tree.yview)
+        self.override_tree.configure(yscrollcommand=ysb.set)
+        self.override_tree.pack(side="left", fill="both", expand=True)
+        ysb.pack(side="right", fill="y")
+        self.override_tree.bind("<<TreeviewSelect>>", self._on_override_select)
+
     def refresh(self):
         years = database.stat_years()
         current = str(date.today().year)
@@ -241,6 +319,179 @@ class StatsTab(ttk.Frame):
         self._load_monthly()
         self._refresh_ranking()
         self._load_eq_monthly()
+        self._refresh_editor()
+
+    def _refresh_editor(self):
+        selected_id = None
+        if self.edit_equipment_var.get() in self._edit_equipment_map:
+            selected_id = self._edit_equipment_map[self.edit_equipment_var.get()]
+
+        items = database.equipment_stat_items()
+        self._edit_equipment_map = {
+            self._equipment_label(item): item["equipment_id"] for item in items
+        }
+        labels = list(self._edit_equipment_map)
+        self.edit_equipment_combo.configure(values=labels)
+        selected_label = next(
+            (
+                label
+                for label, equipment_id in self._edit_equipment_map.items()
+                if equipment_id == selected_id
+            ),
+            labels[0] if labels else "",
+        )
+        if self._selected_stat_key is None:
+            self.edit_equipment_var.set(selected_label)
+
+        selected_key = self._selected_stat_key
+        self.override_tree.delete(*self.override_tree.get_children())
+        for row in database.list_effective_monthly_stats():
+            item_id = self._stat_iid(row["equipment_id"], row["stat_month"])
+            label = self._equipment_label(row)
+            self.override_tree.insert(
+                "",
+                "end",
+                iid=item_id,
+                values=(
+                    label,
+                    row["stat_month"],
+                    row["rent_count"],
+                    row["return_count"],
+                    row["source_status"],
+                ),
+            )
+            self._edit_equipment_map[label] = row["equipment_id"]
+        if selected_key is None:
+            return
+        selected_iid = self._stat_iid(*selected_key)
+        if selected_iid in self.override_tree.get_children():
+            self.override_tree.selection_set(selected_iid)
+            self.override_tree.see(selected_iid)
+        else:
+            self._selected_stat_key = None
+
+    def _on_override_select(self, _event=None):
+        sel = self.override_tree.selection()
+        if not sel:
+            return
+        equipment_id, stat_month = self._parse_stat_iid(sel[0])
+        values = self.override_tree.item(sel[0], "values")
+        self._selected_stat_key = (equipment_id, stat_month)
+        self.edit_equipment_var.set(values[0])
+        self.stat_month_var.set(values[1])
+        self.stat_rent_var.set(str(values[2]))
+        self.stat_return_var.set(str(values[3]))
+
+    def _stat_iid(self, equipment_id, stat_month):
+        return f"{equipment_id}:{stat_month}"
+
+    def _parse_stat_iid(self, item_id):
+        equipment_id, stat_month = item_id.split(":", 1)
+        return int(equipment_id), stat_month
+
+    def _override_input(self, require_positive=False):
+        label = self.edit_equipment_var.get()
+        if label not in self._edit_equipment_map:
+            messagebox.showwarning("입력 확인", "장비를 선택하세요.", parent=self)
+            return None
+
+        stat_month = self.stat_month_var.get().strip()
+        try:
+            parsed_month = date.fromisoformat(f"{stat_month}-01")
+            if parsed_month.isoformat()[:7] != stat_month:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning(
+                "입력 확인", "통계 월은 YYYY-MM 형식으로 입력하세요.", parent=self
+            )
+            return None
+
+        try:
+            rent_count = int(self.stat_rent_var.get().strip())
+            return_count = int(self.stat_return_var.get().strip())
+            if rent_count < 0 or return_count < 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning(
+                "입력 확인", "대여와 반납 건수는 0 이상의 숫자로 입력하세요.", parent=self
+            )
+            return None
+
+        if require_positive and rent_count == 0 and return_count == 0:
+            messagebox.showwarning(
+                "입력 확인", "대여 또는 반납 건수를 1건 이상 입력하세요.", parent=self
+            )
+            return None
+
+        return self._edit_equipment_map[label], stat_month, rent_count, return_count
+
+    def _add_override(self):
+        override = self._override_input(require_positive=True)
+        if override is None:
+            return
+        equipment_id, stat_month, rent_count, return_count = override
+        ok, msg = database.add_stat_override(
+            equipment_id, stat_month, rent_count, return_count
+        )
+        if ok:
+            self._selected_stat_key = (equipment_id, stat_month)
+            self.app.refresh_all()
+        else:
+            messagebox.showwarning("입력 확인", msg, parent=self)
+
+    def _save_override(self):
+        if self._selected_stat_key is None:
+            messagebox.showwarning("선택 확인", "변경할 통계를 선택하세요.", parent=self)
+            return
+        override = self._override_input()
+        if override is None:
+            return
+        selected_id, selected_month = self._selected_stat_key
+        equipment_id, stat_month, rent_count, return_count = override
+        if (equipment_id, stat_month) != (selected_id, selected_month):
+            messagebox.showwarning(
+                "입력 확인",
+                "선택한 통계의 장비와 통계 월은 변경할 수 없습니다. 새 월은 추가를 사용하세요.",
+                parent=self,
+            )
+            return
+        ok, msg = database.save_stat_override(
+            equipment_id, stat_month, rent_count, return_count
+        )
+        if ok:
+            self.app.refresh_all()
+        else:
+            messagebox.showerror("실패", msg, parent=self)
+
+    def _remove_override(self):
+        if self._selected_stat_key is None:
+            messagebox.showwarning("선택 확인", "제거할 통계를 선택하세요.", parent=self)
+            return
+        values = self.override_tree.item(
+            self._stat_iid(*self._selected_stat_key), "values"
+        )
+        if not messagebox.askyesno(
+            "제거 확인",
+            f"선택한 통계를 제거하시겠습니까?\n장비: {values[0]}\n통계 월: {values[1]}",
+            parent=self,
+        ):
+            return
+        ok, msg = database.remove_stat_override(*self._selected_stat_key)
+        if ok:
+            self.app.refresh_all()
+        else:
+            messagebox.showerror("실패", msg, parent=self)
+
+    def _reset_overrides(self):
+        if not messagebox.askyesno(
+            "초기화 확인",
+            "모든 통계 수정을 초기화하시겠습니까?\n실제 대여 이력은 유지되고 자동 통계로 복원됩니다.",
+            parent=self,
+        ):
+            return
+        database.reset_stat_overrides()
+        self._selected_stat_key = None
+        self.app.refresh_all()
 
     def _load_yearly(self):
         self.year_tree.delete(*self.year_tree.get_children())
@@ -265,7 +516,6 @@ class StatsTab(ttk.Frame):
         self.rank_tree.delete(*self.rank_tree.get_children())
         for row in database.equipment_totals():
             active = row["active_count"] or 0
-            returned = row["rent_count"] - active
             label = self._equipment_label(row)
             self.rank_tree.insert(
                 "",
@@ -274,7 +524,7 @@ class StatsTab(ttk.Frame):
                 values=(
                     label,
                     row["rent_count"],
-                    returned,
+                    row["return_count"],
                     active,
                     row["last_rent"],
                 ),
@@ -326,13 +576,13 @@ class StatsTab(ttk.Frame):
             self._draw_chart(self.eq_canvas, self._eq_data)
 
     def _export_statistics(self):
-        if self.notebook.index("current") == 0:
-            title, details, tables, filename = self._all_export_data()
-        else:
+        if self.notebook.index("current") == 1:
             export_data = self._equipment_export_data()
             if export_data is None:
                 return
             title, details, tables, filename = export_data
+        else:
+            title, details, tables, filename = self._all_export_data()
 
         file_format = self.export_format_var.get()
         if file_format == "PDF":
@@ -385,7 +635,7 @@ class StatsTab(ttk.Frame):
                 (
                     self._equipment_label(row),
                     row["rent_count"],
-                    row["rent_count"] - active,
+                    row["return_count"],
                     active,
                     row["last_rent"] or "-",
                 )
