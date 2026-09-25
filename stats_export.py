@@ -5,6 +5,12 @@ import os
 PDF_FONT_NAME = "KoreanStatsFont"
 
 
+def _excel_value(value):
+    if isinstance(value, str) and value.startswith("="):
+        return f"'{value}"
+    return value
+
+
 def export_excel(file_path, title, details, tables):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -24,7 +30,7 @@ def export_excel(file_path, title, details, tables):
         row_number = 3
         for label, value in details:
             worksheet.cell(row_number, 1, label)
-            worksheet.cell(row_number, 2, value)
+            worksheet.cell(row_number, 2, _excel_value(value))
             worksheet.cell(row_number, 1).font = Font(bold=True)
             row_number += 1
 
@@ -36,7 +42,7 @@ def export_excel(file_path, title, details, tables):
             cell.alignment = Alignment(horizontal="center")
 
         for row in rows:
-            worksheet.append(list(row))
+            worksheet.append([_excel_value(value) for value in row])
 
         last_row = header_row + len(rows)
         worksheet.freeze_panes = f"A{header_row + 1}"

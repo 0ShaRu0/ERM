@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b6f6b">
+  <meta name="description" content="장비 대여와 반납을 온라인과 오프라인에서 관리하는 앱">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="이음 장비관리">
+  <meta name="erm-bootstrap-key" content="{{ bootstrap_key|e }}">
+  <title>이음 | 장비 대여 관리</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">본문으로 건너뛰기</a>
+
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Zm0 0v10l8 4m0-10v10m8-14v10l-8 4"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h13m0 0-3-3m3 3-3 3M17 17H4m0 0 3 3m-3-3 3-3"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H7.4A3.4 3.4 0 0 0 4 18.4V20m13-10a3 3 0 1 0 0-6m3 16v-1.5a3.5 3.5 0 0 0-2.5-3.35M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 7h-5V2m4.1 5A8 8 0 1 0 20 15M4 17h5v5m-4.1-5A8 8 0 0 0 4 9"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9a14 14 0 0 1 18 0M6 13a9 9 0 0 1 12 0m-9 4a4.5 4.5 0 0 1 6 0m-3 3h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16m-10 4v6m4-6v6M9 7l1-3h4l1 3m3 0-1 13H7L6 7"/></symbol>
+    <symbol id="i-return" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5m-5-5h10a6 6 0 0 1 6 6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5m0 3h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="주 메뉴">
+      <div class="brand">
+        <img src="/static/icon.svg" alt="" width="44" height="44">
+        <div><strong>이음</strong><span>장비 대여 관리</span></div>
+      </div>
+      <nav class="side-nav">
+        <button class="nav-item is-active" type="button" data-view="equipment" aria-current="page">
+          <svg><use href="#i-box"></use></svg><span>장비</span>
+        </button>
+        <button class="nav-item" type="button" data-view="rentals">
+          <svg><use href="#i-swap"></use></svg><span>대여 내역</span>
+        </button>
+        <button class="nav-item" type="button" data-view="renters">
+          <svg><use href="#i-users"></use></svg><span>대여자 관리</span>
+        </button>
+        <button class="nav-item" type="button" data-view="stats">
+          <svg><use href="#i-chart"></use></svg><span>통계</span>
+        </button>
+        <button class="nav-item" type="button" data-view="sync">
+          <svg><use href="#i-sync"></use></svg><span>동기화</span><span class="nav-count" id="sideSyncCount" hidden>0</span>
+        </button>
+      </nav>
+      <div class="sidebar-status">
+        <div class="connection-line"><span class="status-dot" data-status-dot></span><strong data-connection-label>확인 중</strong></div>
+        <p data-last-contact>서버 연결을 확인하고 있습니다.</p>
+        <button class="text-button" type="button" data-action="sync">지금 동기화</button>
+      </div>
+      <p class="sidebar-foot">로컬 우선 · 안전한 현장 기록</p>
+    </aside>
+
+    <main class="main" id="mainContent" tabindex="-1">
+      <header class="topbar">
+        <div class="mobile-brand" aria-hidden="true"><img src="/static/icon.svg" alt="" width="34" height="34"><strong>이음</strong></div>
+        <div class="page-heading">
+          <span class="eyebrow" id="pageEyebrow">EQUIPMENT DESK</span>
+          <h1 id="pageTitle">장비</h1>
+        </div>
+        <button class="connection-pill" type="button" data-view-jump="sync" aria-label="동기화 상태 열기">
+          <span class="status-dot" data-status-dot></span>
+          <span data-connection-label>확인 중</span>
+          <span class="sync-count" id="headerSyncCount" hidden>0</span>
+        </button>
+      </header>
+
+      <div class="offline-banner" id="offlineBanner" role="status" hidden>
+        <svg><use href="#i-alert"></use></svg>
+        <span>서버에 연결되지 않았습니다. 대여·반납은 기기에 저장되고 연결 시 전송됩니다.</span>
+      </div>
+
+      <section class="view is-active" id="view-equipment" data-view-panel="equipment" aria-labelledby="pageTitle">
+        <div class="inventory-hero">
+          <div>
+            <span class="section-kicker">오늘의 대여 현황</span>
+            <p class="hero-number"><strong id="availableTotal">0</strong><span>대여 가능</span></p>
+            <p id="inventorySummary">저장된 장비 정보를 불러오는 중입니다.</p>
+          </div>
+          <div class="hero-orbit" aria-hidden="true"><span></span><span></span><span></span><svg><use href="#i-box"></use></svg></div>
+        </div>
+
+        <div class="section-toolbar">
+          <label class="search-field" for="equipmentSearch">
+            <svg><use href="#i-search"></use></svg>
+            <span class="sr-only">장비 검색</span>
+            <input id="equipmentSearch" type="search" placeholder="장비명 또는 분류 검색" autocomplete="off">
+          </label>
+          <button class="button primary online-only" type="button" data-open="equipmentDialog">
+            <svg><use href="#i-plus"></use></svg>장비 등록
+          </button>
+        </div>
+        <div class="equipment-grid" id="equipmentGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="view" id="view-rentals" data-view-panel="rentals" hidden>
+        <div class="section-intro">
+          <div><span class="section-kicker">대여 흐름</span><h2>나간 장비와 돌아온 장비</h2><p>활성 대여를 우선 확인하고 현장에서 바로 반납 처리하세요.</p></div>
+          <div class="intro-stat"><strong id="activeRentalCount">0</strong><span>현재 대여 중</span></div>
+        </div>
+        <div class="segmented" role="tablist" aria-label="대여 내역 구분">
+          <button class="is-active" type="button" role="tab" aria-selected="true" data-rental-tab="active">활성 대여</button>
+          <button type="button" role="tab" aria-selected="false" data-rental-tab="recent">최근 내역</button>
+        </div>
+        <div id="rentalList" class="rental-list" aria-live="polite"></div>
+      </section>
+
+      <section class="view" id="view-renters" data-view-panel="renters" hidden>
+        <div class="section-intro compact">
+          <div><span class="section-kicker">MEMBER DIRECTORY</span><h2>대여자 관리</h2><p>장비를 빌릴 수 있는 구성원을 관리합니다.</p></div>
+          <button class="button primary online-only" type="button" data-open="renterDialog"><svg><use href="#i-plus"></use></svg>대여자 등록</button>
+        </div>
+        <div class="section-toolbar renters-toolbar">
+          <label class="search-field" for="renterSearch">
+            <svg><use href="#i-search"></use></svg>
+            <span class="sr-only">대여자 검색</span>
+            <input id="renterSearch" type="search" placeholder="아이디, 이름, 연락처 검색" autocomplete="off">
+          </label>
+          <span class="result-count" id="renterCount">0명</span>
+        </div>
+        <div class="renter-grid" id="renterGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="view" id="view-stats" data-view-panel="stats" hidden>
+        <div class="section-intro compact">
+          <div><span class="section-kicker">RENTAL REPORT</span><h2>대여 통계</h2><p>기간과 장비별 흐름을 확인하고 보고서를 내려받으세요.</p></div>
+          <button class="button secondary online-only" type="button" data-open="statsOverrideDialog">통계 조정</button>
+        </div>
+        <form class="filter-panel" id="statsFilterForm">
+          <label><span>기준 연도</span><select id="statsYear" name="year"></select></label>
+          <label><span>시작일</span><input id="statsStartDate" name="start_date" type="date"></label>
+          <label><span>종료일</span><input id="statsEndDate" name="end_date" type="date"></label>
+          <label><span>장비</span><select id="statsEquipment" name="equipment_id"><option value="">전체 장비</option></select></label>
+          <button class="button primary online-only" type="submit">조회</button>
+        </form>
+        <div class="report-actions">
+          <p id="statsRangeLabel">서버 연결 후 통계를 조회할 수 있습니다.</p>
+          <div>
+            <button class="button ghost online-only" type="button" data-export="xlsx"><svg><use href="#i-download"></use></svg>Excel</button>
+            <button class="button ghost online-only" type="button" data-export="pdf"><svg><use href="#i-download"></use></svg>PDF</button>
+          </div>
+        </div>
+        <div class="stat-cards" id="statCards"></div>
+        <section class="data-card chart-card" aria-labelledby="monthlyHeading">
+          <div class="card-heading"><div><span class="section-kicker">MONTHLY FLOW</span><h3 id="monthlyHeading">월별 대여·반납</h3></div><div class="chart-legend"><span class="rent-key">대여</span><span class="return-key">반납</span></div></div>
+          <div class="monthly-chart" id="monthlyChart"></div>
+        </section>
+        <div class="stats-columns">
+          <section class="data-card" aria-labelledby="equipmentTotalsHeading">
+            <div class="card-heading"><h3 id="equipmentTotalsHeading">장비별 누적</h3></div>
+            <div class="table-scroll"><table><thead><tr><th>장비</th><th>대여</th><th>반납</th><th>대여 중</th></tr></thead><tbody id="equipmentTotalsBody"></tbody></table></div>
+          </section>
+          <section class="data-card" aria-labelledby="yearlyHeading">
+            <div class="card-heading"><h3 id="yearlyHeading">연도별 합계</h3></div>
+            <div class="table-scroll"><table><thead><tr><th>연도</th><th>대여</th><th>반납</th></tr></thead><tbody id="yearlyStatsBody"></tbody></table></div>
+          </section>
+        </div>
+        <section class="data-card detail-card" aria-labelledby="detailHeading">
+          <div class="card-heading"><div><span class="section-kicker">DETAIL LOG</span><h3 id="detailHeading">대여 상세</h3></div><span class="result-count" id="detailCount">0건</span></div>
+          <div class="table-scroll"><table class="detail-table"><thead><tr><th>대여일시</th><th>장비</th><th>아이디</th><th>이름</th><th>연락처</th><th>반납예정</th><th>반납상태</th></tr></thead><tbody id="statsDetailBody"></tbody></table></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-sync" data-view-panel="sync" hidden>
+        <div class="sync-hero">
+          <div class="sync-pulse"><svg><use href="#i-sync"></use></svg></div>
+          <div><span class="section-kicker">CONNECTION HUB</span><h2>동기화 상태</h2><p id="syncHeroText">서버와의 연결 상태를 확인하고 있습니다.</p></div>
+          <button class="button primary" type="button" data-action="sync"><svg><use href="#i-sync"></use></svg>지금 동기화</button>
+        </div>
+        <div class="sync-layout">
+          <div>
+            <section class="data-card connection-card">
+              <div class="card-heading"><h3>연결 정보</h3><span class="connection-badge" id="connectionBadge">확인 중</span></div>
+              <dl class="connection-details">
+                <div><dt>현재 서버 주소</dt><dd><code id="serverOrigin"></code><button class="icon-button" type="button" data-action="copy-origin" aria-label="서버 주소 복사"><svg><use href="#i-link"></use></svg></button></dd></div>
+                <div><dt>모바일 연결 PIN</dt><dd><code id="connectionPin">------</code></dd></div>
+                <div><dt>마지막 동기화</dt><dd id="lastSyncTime">기록 없음</dd></div>
+                <div><dt>기기 ID</dt><dd><code id="clientIdLabel"></code></dd></div>
+              </dl>
+            </section>
+            <section class="data-card queue-card">
+              <div class="card-heading"><div><span class="section-kicker">OUTBOX</span><h3>전송 대기</h3></div><span class="queue-number" id="pendingCount">0</span></div>
+              <div id="pendingList" class="operation-list"></div>
+            </section>
+            <section class="data-card queue-card conflict-card">
+              <div class="card-heading"><div><span class="section-kicker">REVIEW NEEDED</span><h3>충돌</h3></div><span class="queue-number danger" id="conflictCount">0</span></div>
+              <div id="conflictList" class="operation-list"></div>
+            </section>
+          </div>
+          <aside class="connect-guide" aria-label="다른 기기 연결 안내">
+            <span class="section-kicker">CONNECT ANOTHER DEVICE</span>
+            <h3>현장 기기를 연결하는 법</h3>
+            <ol>
+              <li><span><svg><use href="#i-wifi"></use></svg></span><div><strong>같은 Wi-Fi 사용</strong><p>PC와 안드로이드 기기를 같은 Wi-Fi에 연결한 뒤, 모바일 브라우저에서 위 서버 주소를 여세요.</p></div></li>
+              <li><span><svg><use href="#i-link"></use></svg></span><div><strong>USB 테더링 사용</strong><p>Wi-Fi가 없다면 안드로이드의 USB 테더링을 켜고, PC가 안내하는 네트워크 주소로 접속하세요.</p></div></li>
+              <li><span><svg><use href="#i-check"></use></svg></span><div><strong>오프라인 앱 설치</strong><p>USB 연결의 localhost 주소 또는 신뢰된 HTTPS 주소에서 ‘앱 설치’를 선택하세요. 일반 Wi-Fi HTTP는 열린 화면에서만 오프라인 기록이 가능합니다.</p></div></li>
+            </ol>
+            <p class="guide-note">오프라인 작업은 이 기기에만 보관됩니다. 서버 연결 전에 브라우저 데이터를 삭제하지 마세요.</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="모바일 주 메뉴">
+      <button class="nav-item is-active" type="button" data-view="equipment" aria-current="page"><svg><use href="#i-box"></use></svg><span>장비</span></button>
+      <button class="nav-item" type="button" data-view="rentals"><svg><use href="#i-swap"></use></svg><span>대여</span></button>
+      <button class="nav-item" type="button" data-view="renters"><svg><use href="#i-users"></use></svg><span>대여자</span></button>
+      <button class="nav-item" type="button" data-view="stats"><svg><use href="#i-chart"></use></svg><span>통계</span></button>
+      <button class="nav-item" type="button" data-view="sync"><svg><use href="#i-sync"></use></svg><span>동기화</span><span class="nav-count" id="bottomSyncCount" hidden>0</span></button>
+    </nav>
+  </div>
+
+  <dialog class="modal" id="equipmentDialog" role="dialog" aria-modal="true" aria-labelledby="equipmentDialogTitle">
+    <form id="equipmentForm" enctype="multipart/form-data">
+      <div class="modal-head"><div><span class="section-kicker">NEW EQUIPMENT</span><h2 id="equipmentDialogTitle">장비 등록</h2></div><button class="icon-button" type="button" data-close aria-label="닫기"><svg><use href="#i-close"></use></svg></button></div>
+      <div class="form-grid">
+        <label class="full"><span>장비명</span><input name="name" type="text" maxlength="100" required placeholder="예: 무선 마이크"></label>
+        <label><span>분류</span><input name="category" type="text" maxlength="60" required placeholder="예: 음향"></label>
+        <label><span>수량</span><input name="quantity" type="number" min="1" max="9999" value="1" required inputmode="numeric"></label>
+        <label class="file-field full"><span>장비 이미지 <small>선택</small></span><input name="image" type="file" accept="image/*"><span class="file-hint">사진을 선택하거나 촬영할 수 있습니다.</span></label>
+      </div>
+      <div class="modal-actions"><button class="button ghost" type="button" data-close>취소</button><button class="button primary" type="submit">등록하기</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="rentDialog" role="dialog" aria-modal="true" aria-labelledby="rentDialogTitle">
+    <form id="rentForm">
+      <div class="modal-head"><div><span class="section-kicker">CHECK OUT</span><h2 id="rentDialogTitle">장비 대여</h2></div><button class="icon-button" type="button" data-close aria-label="닫기"><svg><use href="#i-close"></use></svg></button></div>
+      <div class="selected-equipment" id="rentEquipmentSummary"></div>
+      <input id="rentEquipmentId" name="equipment_id" type="hidden">
+      <div class="form-grid one-column">
+        <label><span>대여자</span><select id="rentRenterId" name="renter_id" required><option value="">대여자를 선택하세요</option></select></label>
+        <label><span>반납 예정일 <small>선택</small></span><input name="due_date" type="date"></label>
+      </div>
+      <p class="form-note">오프라인에서도 처리할 수 있으며, 연결되면 입력 순서대로 서버에 전송됩니다.</p>
+      <div class="modal-actions"><button class="button ghost" type="button" data-close>취소</button><button class="button primary" type="submit">대여 처리</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="returnDialog" role="dialog" aria-modal="true" aria-labelledby="returnDialogTitle">
+    <form id="returnForm">
+      <div class="modal-head"><div><span class="section-kicker">CHECK IN</span><h2 id="returnDialogTitle">장비 반납</h2></div><button class="icon-button" type="button" data-close aria-label="닫기"><svg><use href="#i-close"></use></svg></button></div>
+      <fieldset class="return-options"><legend>반납할 대여 건을 선택하세요</legend><div id="returnRentalOptions"></div></fieldset>
+      <p class="form-note">반납 시간은 현재 기기의 시간으로 기록됩니다.</p>
+      <div class="modal-actions"><button class="button ghost" type="button" data-close>취소</button><button class="button primary" type="submit">반납 처리</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="renterDialog" role="dialog" aria-modal="true" aria-labelledby="renterDialogTitle">
+    <form id="renterForm">
+      <div class="modal-head"><div><span class="section-kicker">NEW MEMBER</span><h2 id="renterDialogTitle">대여자 등록</h2></div><button class="icon-button" type="button" data-close aria-label="닫기"><svg><use href="#i-close"></use></svg></button></div>
+      <div class="form-grid one-column">
+        <label><span>아이디</span><input name="user_id" type="text" maxlength="60" required autocomplete="off" placeholder="학번 또는 사번"></label>
+        <label><span>이름</span><input name="name" type="text" maxlength="60" required autocomplete="name"></label>
+        <label><span>연락처</span><input name="phone" type="tel" maxlength="40" autocomplete="tel" placeholder="010-0000-0000"></label>
+      </div>
+      <div class="modal-actions"><button class="button ghost" type="button" data-close>취소</button><button class="button primary" type="submit">등록하기</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="statsOverrideDialog" role="dialog" aria-modal="true" aria-labelledby="statsOverrideTitle">
+    <form id="statsOverrideForm">
+      <div class="modal-head"><div><span class="section-kicker">MANUAL CONTROL</span><h2 id="statsOverrideTitle">통계 조정</h2></div><button class="icon-button" type="button" data-close aria-label="닫기"><svg><use href="#i-close"></use></svg></button></div>
+      <div class="form-grid">
+        <label class="full"><span>장비</span><select id="overrideEquipment" name="equipment_id" required></select></label>
+        <label><span>통계 월</span><input name="stat_month" type="month" required></label>
+        <label><span>작업</span><select id="overrideMode" name="mode"><option value="add">새 월 추가</option><option value="save">건수 저장</option><option value="remove">해당 월 제거</option></select></label>
+        <label><span>대여 건수</span><input name="rent_count" type="number" min="0" value="0" required inputmode="numeric"></label>
+        <label><span>반납 건수</span><input name="return_count" type="number" min="0" value="0" required inputmode="numeric"></label>
+      </div>
+      <p class="form-note">‘저장’은 자동 집계 값을 덮어씁니다. 전체 수동 조정을 지우려면 초기화를 사용하세요.</p>
+      <div class="modal-actions split"><button class="button danger-ghost" type="button" data-action="reset-stats">전체 초기화</button><span></span><button class="button ghost" type="button" data-close>취소</button><button class="button primary" type="submit">적용</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal confirm-modal" id="confirmDialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <form method="dialog">
+      <div class="confirm-icon"><svg><use href="#i-alert"></use></svg></div>
+      <h2 id="confirmTitle">확인</h2><p id="confirmMessage"></p>
+      <div class="modal-actions"><button class="button ghost" value="cancel">취소</button><button class="button danger" id="confirmAction" value="confirm">확인</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

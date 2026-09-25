@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="이음 장비관리">
+  <rect width="512" height="512" rx="116" fill="#083f42"/>
+  <path d="M106 168 256 92l150 76-150 77-150-77Z" fill="#f4f1e9"/>
+  <path d="M106 168v174l128 65V232L106 168Z" fill="#36b4a8"/>
+  <path d="M406 168v174l-128 65V232l128-64Z" fill="#0b6f6b"/>
+  <path d="M180 300c0-42 34-76 76-76s76 34 76 76" fill="none" stroke="#f5c86b" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="180" cy="300" r="22" fill="#f5c86b"/>
+  <circle cx="332" cy="300" r="22" fill="#f5c86b"/>
+</svg>
