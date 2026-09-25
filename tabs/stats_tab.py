@@ -15,6 +15,9 @@ class StatsTab(ttk.Frame):
         self._all_data = None
         self._eq_data = None
         self._equipment_map = {}
+        self._detail_equipment_map = {}
+        self._detail_rows = []
+        self._detail_filter = ("", "", None, "전체 장비")
         self._edit_equipment_map = {}
         self._selected_stat_key = None
 
@@ -44,14 +47,18 @@ class StatsTab(ttk.Frame):
 
         page_all = ttk.Frame(self.notebook, padding=8)
         page_eq = ttk.Frame(self.notebook, padding=8)
+        page_detail = ttk.Frame(self.notebook, padding=8)
         page_edit = ttk.Frame(self.notebook, padding=8)
         self.notebook.add(page_all, text=" 전체 통계 ")
         self.notebook.add(page_eq, text=" 장비별 통계 ")
+        self.notebook.add(page_detail, text=" 대여 상세 ")
         self.notebook.add(page_edit, text=" 통계 편집 ")
 
         self._build_all(page_all)
         self._build_equipment(page_eq)
+        self._build_detail(page_detail)
         self._build_editor(page_edit)
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_notebook_changed)
         self.refresh()
 
     def _build_all(self, page):
@@ -205,6 +212,99 @@ class StatsTab(ttk.Frame):
         r_ysb.pack(side="right", fill="y")
         self.rank_tree.bind("<<TreeviewSelect>>", self._on_rank_select)
 
+    def _build_detail(self, page):
+        control = ttk.LabelFrame(page, text="상세 검색", padding=8)
+        control.pack(fill="x")
+
+        ttk.Label(control, text="시작일:").pack(side="left")
+        self.detail_start_var = tk.StringVar()
+        start_entry = ttk.Entry(
+            control, textvariable=self.detail_start_var, width=12
+        )
+        start_entry.pack(side="left", padx=(4, 10))
+        start_entry.bind("<Return>", self._search_details)
+
+        ttk.Label(control, text="종료일:").pack(side="left")
+        self.detail_end_var = tk.StringVar()
+        end_entry = ttk.Entry(control, textvariable=self.detail_end_var, width=12)
+        end_entry.pack(side="left", padx=(4, 10))
+        end_entry.bind("<Return>", self._search_details)
+
+        ttk.Label(control, text="장비:").pack(side="left")
+        self.detail_equipment_var = tk.StringVar(value="전체 장비")
+        self.detail_equipment_combo = ttk.Combobox(
+            control,
+            textvariable=self.detail_equipment_var,
+            state="readonly",
+            width=26,
+        )
+        self.detail_equipment_combo.pack(side="left", padx=(4, 10))
+        self.detail_equipment_combo.bind(
+            "<<ComboboxSelected>>", self._search_details
+        )
+
+        ttk.Button(control, text="검색", command=self._search_details).pack(
+            side="left"
+        )
+        ttk.Button(control, text="초기화", command=self._reset_detail_filters).pack(
+            side="left", padx=(6, 0)
+        )
+        self.detail_count_var = tk.StringVar(value="검색 전")
+        ttk.Label(control, textvariable=self.detail_count_var).pack(side="right")
+
+        ttk.Label(
+            page,
+            text=(
+                "날짜는 YYYY-MM-DD 형식으로 입력하세요. 빈 날짜는 제한 없이 "
+                "실제 대여 이력을 조회합니다."
+            ),
+            foreground="#555555",
+        ).pack(fill="x", pady=(6, 0))
+
+        result = ttk.LabelFrame(page, text="대여 내역", padding=6)
+        result.pack(fill="both", expand=True, pady=(8, 0))
+        result.columnconfigure(0, weight=1)
+        result.rowconfigure(0, weight=1)
+
+        columns = (
+            "id",
+            "rent_date",
+            "equip",
+            "user",
+            "name",
+            "phone",
+            "due",
+            "return_date",
+        )
+        self.detail_tree = ttk.Treeview(
+            result, columns=columns, show="headings", selectmode="browse"
+        )
+        for col, text, width in [
+            ("id", "번호", 55),
+            ("rent_date", "대여일시", 145),
+            ("equip", "장비명", 170),
+            ("user", "대여자 아이디", 110),
+            ("name", "이름", 100),
+            ("phone", "연락처", 130),
+            ("due", "반납 예정일", 100),
+            ("return_date", "반납일시 / 상태", 145),
+        ]:
+            self.detail_tree.heading(col, text=text)
+            anchor = "center" if col in ("id", "phone", "due") else "w"
+            self.detail_tree.column(col, width=width, anchor=anchor)
+
+        ysb = ttk.Scrollbar(result, orient="vertical", command=self.detail_tree.yview)
+        xsb = ttk.Scrollbar(
+            result, orient="horizontal", command=self.detail_tree.xview
+        )
+        self.detail_tree.configure(
+            yscrollcommand=ysb.set,
+            xscrollcommand=xsb.set,
+        )
+        self.detail_tree.grid(row=0, column=0, sticky="nsew")
+        ysb.grid(row=0, column=1, sticky="ns")
+        xsb.grid(row=1, column=0, sticky="ew")
+
     def _build_editor(self, page):
         form = ttk.LabelFrame(page, text="통계 편집", padding=8)
         form.pack(fill="x")
@@ -315,11 +415,132 @@ class StatsTab(ttk.Frame):
         )
         self.eq_var.set(selected_label)
 
+        self._refresh_detail_equipment()
+
         self._load_yearly()
         self._load_monthly()
         self._refresh_ranking()
         self._load_eq_monthly()
+        if self.notebook.index("current") == 2:
+            self._load_details(show_warning=False)
         self._refresh_editor()
+
+    def _on_notebook_changed(self, _event=None):
+        if self.notebook.index("current") == 2:
+            self._load_details(show_warning=False)
+
+    def _refresh_detail_equipment(self):
+        selected = self._detail_equipment_map.get(
+            self.detail_equipment_var.get()
+        )
+        selected_id = selected[0] if selected else None
+        items = database.rental_equipment_items()
+        self._detail_equipment_map = {"전체 장비": (None, "전체 장비")}
+        self._detail_equipment_map.update(
+            {
+                self._equipment_label(item):
+                    (item["equipment_id"], item["equipment_name"])
+                for item in items
+            }
+        )
+        labels = list(self._detail_equipment_map)
+        self.detail_equipment_combo.configure(values=labels)
+        selected_label = next(
+            (
+                label
+                for label, (equipment_id, _) in self._detail_equipment_map.items()
+                if equipment_id == selected_id
+            ),
+            "전체 장비",
+        )
+        self.detail_equipment_var.set(selected_label)
+
+    def _detail_filter_values(self, show_warning=True):
+        parsed_dates = []
+        for value, label in (
+            (self.detail_start_var.get().strip(), "시작일"),
+            (self.detail_end_var.get().strip(), "종료일"),
+        ):
+            if not value:
+                parsed_dates.append(None)
+                continue
+            try:
+                parsed = date.fromisoformat(value)
+                if parsed.isoformat() != value:
+                    raise ValueError
+            except ValueError:
+                if show_warning:
+                    messagebox.showwarning(
+                        "입력 확인",
+                        f"{label}은 YYYY-MM-DD 형식으로 입력하세요.",
+                        parent=self,
+                    )
+                return None
+            parsed_dates.append(parsed)
+
+        start, end = parsed_dates
+        if start and end and start > end:
+            if show_warning:
+                messagebox.showwarning(
+                    "입력 확인",
+                    "시작일은 종료일보다 늦을 수 없습니다.",
+                    parent=self,
+                )
+            return None
+
+        selected = self._detail_equipment_map.get(
+            self.detail_equipment_var.get()
+        )
+        if selected is None:
+            if show_warning:
+                messagebox.showwarning(
+                    "선택 확인", "조회할 장비를 선택하세요.", parent=self
+                )
+            return None
+        equipment_id, equipment_name = selected
+        return (
+            start.isoformat() if start else "",
+            end.isoformat() if end else "",
+            equipment_id,
+            equipment_name,
+        )
+
+    def _search_details(self, _event=None):
+        self._load_details()
+
+    def _reset_detail_filters(self):
+        self.detail_start_var.set("")
+        self.detail_end_var.set("")
+        self.detail_equipment_var.set("전체 장비")
+        self._load_details()
+
+    def _load_details(self, show_warning=True):
+        filters = self._detail_filter_values(show_warning)
+        if filters is None:
+            return False
+        start, end, equipment_id, _ = filters
+        rows = database.list_rental_details(start, end, equipment_id)
+        self.detail_tree.delete(*self.detail_tree.get_children())
+        for row in rows:
+            self.detail_tree.insert(
+                "",
+                "end",
+                iid=f"detail{row['id']}",
+                values=(
+                    row["id"],
+                    row["rent_date"],
+                    row["equipment_name"],
+                    row["user_id"],
+                    row["renter_name"] or "-",
+                    row["renter_phone"] or "-",
+                    row["due_date"] or "-",
+                    row["return_date"] or "대여 중",
+                ),
+            )
+        self._detail_rows = rows
+        self._detail_filter = filters
+        self.detail_count_var.set(f"{len(rows)}건")
+        return True
 
     def _refresh_editor(self):
         selected_id = None
@@ -576,13 +797,16 @@ class StatsTab(ttk.Frame):
             self._draw_chart(self.eq_canvas, self._eq_data)
 
     def _export_statistics(self):
-        if self.notebook.index("current") == 1:
+        current_page = self.notebook.index("current")
+        if current_page == 1:
             export_data = self._equipment_export_data()
-            if export_data is None:
-                return
-            title, details, tables, filename = export_data
+        elif current_page == 2:
+            export_data = self._detail_export_data()
         else:
-            title, details, tables, filename = self._all_export_data()
+            export_data = self._all_export_data()
+        if export_data is None:
+            return
+        title, details, tables, filename = export_data
 
         file_format = self.export_format_var.get()
         if file_format == "PDF":
@@ -695,6 +919,67 @@ class StatsTab(ttk.Frame):
             "_" if character in '<>:"/\\|?*' else character for character in name
         ).strip(". ")
         return f"{name} 장비 대여 통계", details, tables, f"{safe_name}_통계_{year}"
+
+    def _detail_export_data(self):
+        if not self._load_details():
+            return None
+
+        start, end, _, equipment_name = self._detail_filter
+        if start and end:
+            period = start if start == end else f"{start} ~ {end}"
+            period_filename = start if start == end else f"{start}_{end}"
+        elif start:
+            period = f"{start} 이후"
+            period_filename = f"{start}_이후"
+        elif end:
+            period = f"{end}까지"
+            period_filename = f"{end}_까지"
+        else:
+            period = "전체 기간"
+            period_filename = "전체기간"
+
+        rows = [
+            (
+                row["id"],
+                row["rent_date"],
+                row["equipment_name"],
+                row["user_id"],
+                row["renter_name"] or "-",
+                row["renter_phone"] or "-",
+                row["due_date"] or "-",
+                row["return_date"] or "대여 중",
+            )
+            for row in self._detail_rows
+        ]
+        details = (
+            ("조회 기간", period),
+            ("장비", equipment_name),
+            ("조회 건수", f"{len(rows)}건"),
+            ("집계 기준", "실제 대여 이력 (수동 통계 제외)"),
+            ("출력일", date.today().isoformat()),
+        )
+        tables = [
+            (
+                "대여 상세 내역",
+                (
+                    "번호",
+                    "대여일시",
+                    "장비명",
+                    "대여자 아이디",
+                    "이름",
+                    "연락처",
+                    "반납 예정일",
+                    "반납일시 / 상태",
+                ),
+                rows,
+            )
+        ]
+        safe_equipment = "".join(
+            "_" if character in '<>:"/\\|?*' else character
+            for character in equipment_name
+        ).strip(". ")
+        filename = f"대여_상세_{safe_equipment}_{period_filename}"
+        return "장비 대여 상세 내역", details, tables, filename
 
     def _equipment_label(self, item):
         if item["is_current"]:

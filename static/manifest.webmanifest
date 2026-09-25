@@ -1,0 +1,20 @@
+{
+  "name": "이음 장비 대여 관리",
+  "short_name": "이음",
+  "description": "PC와 안드로이드에서 사용하는 오프라인 지원 장비 대여 관리 앱",
+  "lang": "ko-KR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f1e9",
+  "theme_color": "#0b6f6b",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

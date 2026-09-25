@@ -24,7 +24,7 @@ if errorlevel 1 (
 if exist build_exe_temp rmdir /s /q build_exe_temp
 if exist "장비대여관리.spec" del /q "장비대여관리.spec"
 
-"%PY%" -m PyInstaller --noconfirm --clean --onefile --windowed --name "장비대여관리" --distpath "." --workpath "build_exe_temp" main.py
+"%PY%" -m PyInstaller --noconfirm --clean --onefile --name "장비대여관리" --add-data "templates;templates" --add-data "static;static" --distpath "." --workpath "build_exe_temp" main.py
 if errorlevel 1 goto :build_failed
 
 if exist build_exe_temp rmdir /s /q build_exe_temp
