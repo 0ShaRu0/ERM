@@ -3,3 +3,4 @@ __pycache__/
 *.db-shm
 *.db-wal
 build_exe_temp/
+.native-build/

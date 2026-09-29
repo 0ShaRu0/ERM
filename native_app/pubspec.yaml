@@ -1,0 +1,32 @@
+name: erm_native
+description: Offline-first equipment rental app for Windows and Android.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  sqflite: ^2.4.0
+  sqflite_common_ffi: ^2.3.4
+  sqlite3_flutter_libs: 0.5.39
+  path_provider: ^2.1.5
+  path: ^1.9.0
+  crypto: ^3.0.6
+  uuid: ^4.5.1
+  flutter_secure_storage: ^9.2.4
+  file_picker: ^8.1.7
+  excel: ^4.0.6
+  pdf: ^3.11.1
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/NanumGothic-Regular.ttf
