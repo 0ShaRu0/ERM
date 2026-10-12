@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  const LOCAL_MODE = document.querySelector('meta[name="erm-mode"]')?.content === "independent";
 
   const DB_NAME = "erm-pwa";
   const DB_VERSION = 1;
@@ -85,6 +86,7 @@
 
   function safeImageUrl(value) {
     if (!value) return "";
+    if (LOCAL_MODE && /^data:image\/(png|jpeg|webp|gif|bmp);base64,[A-Za-z0-9+/=]+$/.test(value)) return value;
     try {
       const url = new URL(String(value), window.location.origin);
       if (url.origin !== window.location.origin || !["http:", "https:"].includes(url.protocol)) return "";
@@ -325,6 +327,7 @@
   }
 
   async function apiFetch(url, options = {}) {
+    if (LOCAL_MODE) return window.ERMLocal.request(url, options);
     const authRetry = options.authRetry !== false;
     const fetchOptions = { ...options };
     delete fetchOptions.authRetry;
@@ -372,6 +375,17 @@
   }
 
   function updateConnectionUI() {
+    if (LOCAL_MODE) {
+      const ready = state.apiReachable === true;
+      $$('[data-connection-label]').forEach(el => { el.textContent = ready ? "기기 저장 모드" : "저장소 확인 필요"; });
+      $$('[data-status-dot]').forEach(el => el.classList.toggle("is-online", ready));
+      $("#offlineBanner").hidden = true;
+      $("[data-last-contact]").textContent = "기기에 저장 · USB 연결 시 동기화";
+      $("#connectionBadge").textContent = ready ? "사용 가능" : "저장소 오류";
+      $("#syncHeroText").textContent = ready ? "평소에는 독립 실행하고, USB를 연결하면 양쪽 기록을 합칠 수 있습니다." : "기기 저장소를 열 수 없습니다. 브라우저 저장 설정을 확인하세요.";
+      $$(".online-only").forEach(el => { el.disabled = !ready || el.dataset.blocked === "true" || el.classList.contains("is-busy"); });
+      return;
+    }
     const label = state.apiReachable === true ? "서버 연결됨" : state.apiReachable === false ? "오프라인" : "확인 중";
     $$('[data-connection-label]').forEach((element) => { element.textContent = label; });
     $$('[data-status-dot]').forEach((element) => {
@@ -420,6 +434,11 @@
   }
 
   function renderConnectionAddress() {
+    if (LOCAL_MODE) {
+      $("#serverOrigin").textContent = "이 기기 내부 저장소";
+      $("#connectionPin").textContent = "기기별 독립 데이터";
+      return;
+    }
     const urls = state.snapshot.connection_urls || [];
     const preferred = urls.find((url) => !url.includes("127.0.0.1") && !url.includes("localhost"));
     $("#serverOrigin").textContent = preferred || window.location.origin;
@@ -436,7 +455,7 @@
     $("#availableTotal").textContent = totalAvailable.toLocaleString("ko-KR");
     $("#inventorySummary").textContent = equipment.length
       ? `${equipment.length.toLocaleString("ko-KR")}종 · 총 ${totalQuantity.toLocaleString("ko-KR")}개 · 현재 ${totalActive.toLocaleString("ko-KR")}개 대여 중`
-      : "등록된 장비가 없습니다. 서버 연결 후 첫 장비를 등록하세요.";
+      : LOCAL_MODE ? "등록된 장비가 없습니다. 이 기기에 첫 장비를 등록하세요." : "등록된 장비가 없습니다. 서버 연결 후 첫 장비를 등록하세요.";
 
     const keyword = $("#equipmentSearch")?.value.trim().toLocaleLowerCase("ko-KR") || "";
     const filtered = equipment.filter((item) => (
@@ -784,10 +803,8 @@
     state.lastFocused = document.activeElement;
     dialog.returnValue = "";
     dialog.showModal();
-    requestAnimationFrame(() => {
-      const focusTarget = dialog.querySelector("input:not([type='hidden']), select, button:not([data-close])");
-      focusTarget?.focus();
-    });
+    const focusTarget = dialog.querySelector("input:not([type='hidden']), select, button:not([data-close])");
+    focusTarget?.focus();
   }
 
   function closeDialog(dialog) {
@@ -823,24 +840,35 @@
 
   function requireOnline() {
     if (state.apiReachable === true) return true;
-    showToast("서버 연결이 필요한 기능입니다. 동기화 화면에서 연결 상태를 확인하세요.", "error");
+    showToast(LOCAL_MODE ? "기기 저장소를 사용할 수 없습니다. 저장소 설정을 확인한 후 앱을 다시 여세요." : "서버 연결이 필요한 기능입니다. 동기화 화면에서 연결 상태를 확인하세요.", "error");
     return false;
   }
 
   async function refreshSnapshot({ silent = false } = {}) {
     try {
       const snapshot = await apiFetch("/api/snapshot");
+      if (LOCAL_MODE) state.apiReachable = true;
       replaceServerSnapshot(snapshot);
-      await saveSnapshotBestEffort();
+      if (!LOCAL_MODE) await saveSnapshotBestEffort();
+      state.statsLoaded = false;
       renderAll();
       return true;
     } catch (error) {
+      if (LOCAL_MODE) { state.apiReachable = false; updateConnectionUI(); }
       if (!silent) showToast(error.message, "error");
       return false;
     }
   }
 
   async function queueOperation(type, payload) {
+    if (LOCAL_MODE) {
+      try {
+        await apiFetch(`/api/local/${type}`, { method: "POST", body: JSON.stringify(payload) });
+        await refreshSnapshot({ silent: true });
+        showToast(type === "rent" ? "대여를 이 기기에 저장했습니다." : "반납을 이 기기에 저장했습니다.");
+        return true;
+      } catch (error) { showToast(error.message, "error"); return false; }
+    }
     const now = new Date();
     const operationId = createUuid();
     const operation = {
@@ -920,6 +948,12 @@
   }
 
   async function syncPending({ silent = false } = {}) {
+    if (LOCAL_MODE) {
+      const result = await refreshSnapshot({ silent });
+      if (result && !silent) showToast("기기 데이터를 새로 불러왔습니다.");
+      if (result && state.activeView === "stats") await loadStats(false);
+      return result;
+    }
     if (state.syncPromise) return state.syncPromise;
     state.syncPromise = (async () => {
       state.syncing = true;
@@ -1080,6 +1114,23 @@
   }
 
   async function downloadReport(format) {
+    if (LOCAL_MODE) {
+      if (format === "pdf") { await loadStats(true); window.print(); return; }
+      try {
+        const parameters = new URLSearchParams({ year: $("#statsYear").value,
+          start_date: $("#statsStartDate").value, end_date: $("#statsEndDate").value, equipment_id: $("#statsEquipment").value });
+        const stats = await apiFetch(`/api/stats?${parameters}`);
+        const rows = [["대여일", "장비명", "대여자 ID", "이름", "연락처", "반납 예정일", "반납일"],
+          ...stats.details.map(r => [r.rent_date, r.equipment_name, r.user_id, r.renter_name, r.renter_phone, r.due_date, r.return_date || "대여 중"])];
+        const cell = value => {
+          let text = String(value ?? "");
+          if (/^[\s]*[=+@-]/.test(text)) text = `'${text}`;
+          return `"${text.replace(/"/g, '""')}"`;
+        };
+        saveDownload(new Blob(["\ufeff", rows.map(row => row.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }), "대여내역.csv");
+      } catch (error) { showToast(error.message, "error"); }
+      return;
+    }
     if (!requireOnline()) return;
     const parameters = new URLSearchParams({
       format,
@@ -1412,14 +1463,15 @@
       });
     });
 
-    window.addEventListener("online", () => { void syncPending({ silent: true }); });
-    window.addEventListener("offline", () => markServerReachable(false));
+    window.addEventListener("online", () => { if (!LOCAL_MODE) void syncPending({ silent: true }); });
+    window.addEventListener("offline", () => { if (!LOCAL_MODE) markServerReachable(false); });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") void syncPending({ silent: true });
     });
   }
 
   async function initialize() {
+    if (LOCAL_MODE) { await initializeIndependent(); return; }
     state.clientId = getClientId();
     const bootstrapKey = document.querySelector('meta[name="erm-bootstrap-key"]')?.content || "";
     try {
@@ -1458,4 +1510,86 @@
       showToast("앱을 시작하는 중 문제가 발생했습니다.", "error");
     });
   });
+
+  function saveDownload(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = name;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  let installPrompt;
+  window.addEventListener("beforeinstallprompt", event => {
+    if (!LOCAL_MODE) return;
+    event.preventDefault(); installPrompt = event;
+    const button = $("#installApp");
+    if (button) button.textContent = "이 기기에 앱 설치";
+  });
+
+  async function initializeIndependent() {
+    VIEW_META.sync = ["기기 · 백업", "DEVICE STORAGE"];
+    state.clientId = getClientId();
+    $("#clientIdLabel").textContent = state.clientId;
+    setupEvents();
+    renderStatsYears({ selected_year: new Date().getFullYear() });
+    renderStats();
+    setupIndependentControls();
+    window.ERMUsbClient.setup(async () => { state.stats = null; await syncPending({ silent: true }); });
+    try {
+      await window.ERMLocal.initialize();
+      state.apiReachable = true;
+      await refreshSnapshot();
+      window.ERMLocal.onChange(() => { void syncPending({ silent: true }); });
+      if (new URLSearchParams(location.search).has("usb_role")) setView("sync");
+    } catch (error) {
+      state.apiReachable = false;
+      updateConnectionUI();
+      showToast(`기기 저장소를 열지 못했습니다: ${error.message}`, "error");
+      return;
+    }
+    if (navigator.storage?.persist) navigator.storage.persist().catch(() => false);
+    if ("serviceWorker" in navigator) {
+      try {
+        await navigator.serviceWorker.register("./sw.js");
+        await navigator.serviceWorker.ready;
+        $("#installationStatus").textContent = "오프라인 실행 준비가 완료되었습니다. 앱을 설치한 후 인터넷 없이 다시 열 수 있습니다.";
+      } catch {
+        $("#installationStatus").textContent = "오프라인 설치를 완료하지 못했습니다. HTTPS 앱 주소에서 다시 열어 주세요.";
+      }
+    } else $("#installationStatus").textContent = "앱 설치는 HTTPS 주소의 브라우저에서 지원됩니다.";
+  }
+
+  function setupIndependentControls() {
+    $("#backupExport").addEventListener("click", async () => {
+      try {
+        const backup = await window.ERMLocal.backup();
+        saveDownload(new Blob([JSON.stringify(backup)], { type: "application/json" }), `이음-백업-${localTimestamp().slice(0, 10)}.json`);
+        showToast("백업 파일을 저장했습니다. 장비 이미지도 포함됩니다.");
+      } catch (error) { showToast(error.message, "error"); }
+    });
+    $("#backupImport").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        if (file.size > 100 * 1024 * 1024) throw new Error("100MB 이하 백업 파일을 선택하세요.");
+        const backup = JSON.parse(await file.text());
+        if (!await askConfirmation("백업으로 복원할까요?", "현재 기기의 데이터를 백업 파일 내용으로 교체합니다. 필요한 기존 데이터는 먼저 백업하세요. 다른 기기는 변경되지 않습니다.", "복원")) return;
+        await window.ERMLocal.restore(backup);
+        state.stats = null;
+        await refreshSnapshot();
+        showToast("이 기기에 백업을 복원했습니다.");
+      } catch (error) { showToast(`복원하지 못했습니다: ${error.message}`, "error"); }
+    });
+    $("#installApp").addEventListener("click", async () => {
+      if (installPrompt) {
+        const prompt = installPrompt; installPrompt = null;
+        try { await prompt.prompt(); await prompt.userChoice; }
+        catch { showToast("브라우저 메뉴의 앱 설치를 사용하세요."); }
+      } else {
+        showToast("iPhone: Safari 공유 → 홈 화면에 추가. Android·PC: 브라우저 메뉴 → 앱 설치.");
+      }
+    });
+  }
 })();

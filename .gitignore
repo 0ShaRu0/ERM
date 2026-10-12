@@ -3,3 +3,8 @@ __pycache__/
 *.db-shm
 *.db-wal
 build_exe_temp/
+standalone/
+이음-독립앱.zip
+이음-USB설치.zip
+*백업*.json
+tools/platform-tools/

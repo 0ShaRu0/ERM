@@ -2192,3 +2192,16 @@ tbody tr:hover td {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media print {
+  body, .app-shell, .main { display: block !important; overflow: visible !important; height: auto !important; background: white !important; }
+  .main { margin: 0 !important; padding: 0 !important; }
+  .sidebar, .bottom-nav, .topbar, .offline-banner, dialog, .toast-container,
+  .report-actions, .stats-filter, .skip-link, button { display: none !important; }
+  .view { display: none !important; }
+  #view-stats { display: block !important; }
+  .table-scroll { overflow: visible !important; }
+  table { width: 100% !important; min-width: 0 !important; font-size: 9pt; }
+  tr { break-inside: avoid; }
+  .data-card { box-shadow: none !important; }
+}

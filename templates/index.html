@@ -10,10 +10,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="이음 장비관리">
   <meta name="erm-bootstrap-key" content="{{ bootstrap_key|e }}">
+  {% if independent %}<meta name="erm-mode" content="independent">{% endif %}
   <title>이음 | 장비 대여 관리</title>
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="stylesheet" href="/static/app.css">
+  {% if independent %}<script src="/static/usb-merge.js" defer></script><script src="/static/local-store.js" defer></script><script src="/static/usb-client.js" defer></script>{% endif %}
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -184,30 +187,63 @@
       <section class="view" id="view-sync" data-view-panel="sync" hidden>
         <div class="sync-hero">
           <div class="sync-pulse"><svg><use href="#i-sync"></use></svg></div>
-          <div><span class="section-kicker">CONNECTION HUB</span><h2>동기화 상태</h2><p id="syncHeroText">서버와의 연결 상태를 확인하고 있습니다.</p></div>
-          <button class="button primary" type="button" data-action="sync"><svg><use href="#i-sync"></use></svg>지금 동기화</button>
+          <div><span class="section-kicker">{% if independent %}DEVICE STORAGE{% else %}CONNECTION HUB{% endif %}</span><h2>{% if independent %}기기 저장 및 백업{% else %}동기화 상태{% endif %}</h2><p id="syncHeroText">저장 상태를 확인하고 있습니다.</p></div>
+          <button class="button primary" type="button" data-action="sync"><svg><use href="#i-sync"></use></svg>{% if independent %}새로고침{% else %}지금 동기화{% endif %}</button>
         </div>
         <div class="sync-layout">
           <div>
             <section class="data-card connection-card">
               <div class="card-heading"><h3>연결 정보</h3><span class="connection-badge" id="connectionBadge">확인 중</span></div>
               <dl class="connection-details">
-                <div><dt>현재 서버 주소</dt><dd><code id="serverOrigin"></code><button class="icon-button" type="button" data-action="copy-origin" aria-label="서버 주소 복사"><svg><use href="#i-link"></use></svg></button></dd></div>
-                <div><dt>모바일 연결 PIN</dt><dd><code id="connectionPin">------</code></dd></div>
-                <div><dt>마지막 동기화</dt><dd id="lastSyncTime">기록 없음</dd></div>
+                <div><dt>{% if independent %}저장 위치{% else %}현재 서버 주소{% endif %}</dt><dd><code id="serverOrigin"></code>{% if not independent %}<button class="icon-button" type="button" data-action="copy-origin" aria-label="서버 주소 복사"><svg><use href="#i-link"></use></svg></button>{% endif %}</dd></div>
+                <div><dt>{% if independent %}사용 방식{% else %}모바일 연결 PIN{% endif %}</dt><dd><code id="connectionPin">------</code></dd></div>
+                <div {% if independent %}hidden{% endif %}><dt>마지막 동기화</dt><dd id="lastSyncTime">기록 없음</dd></div>
                 <div><dt>기기 ID</dt><dd><code id="clientIdLabel"></code></dd></div>
               </dl>
             </section>
-            <section class="data-card queue-card">
+            {% if independent %}
+            <section class="data-card connection-card">
+              <div class="card-heading"><h3>USB 데이터 동기화</h3></div>
+              <p>평소에는 기기에 저장하고, USB 연결 시 PC와 휴대폰의 변경 사항을 합칩니다.</p>
+              <label>이 기기 <select id="usbRole"><option value="pc">컴퓨터</option><option value="phone">Android 휴대폰</option></select></label>
+              <label id="usbConflictLabel">같은 기록을 양쪽에서 변경한 경우
+                <select id="usbPreference"><option value="">자동 반영 중단 (기본)</option><option value="pc">해당 기록은 PC 내용 사용</option><option value="phone">해당 기록은 휴대폰 내용 사용</option></select>
+              </label>
+              <button class="button primary" id="usbSync" type="button">USB로 양쪽 데이터 동기화</button>
+              <p id="usbSyncStatus" class="guide-note" role="status">PC에서 USB_데이터_동기화.bat 실행 후 양쪽 앱에서 이 버튼을 누르세요.</p>
+              <p class="guide-note">처음 연결하면 양쪽 기록을 합칩니다. 이름이 같은 장비라도 각각 등록한 장비는 별도 장비입니다. 수량 충돌은 반영을 중단합니다.</p>
+            </section>
+            <section class="data-card connection-card">
+              <div class="card-heading"><h3>데이터 백업 · 복원</h3></div>
+              <p>장비, 이미지, 대여자, 대여 이력과 통계 조정을 파일로 보관합니다. 복원하면 현재 기기의 데이터를 교체합니다.</p>
+              <button class="button primary" id="backupExport" type="button">백업 파일 저장</button>
+              <label class="button ghost" for="backupImport">백업 파일 복원</label>
+              <input id="backupImport" type="file" accept="application/json,.json" hidden>
+              <p class="guide-note">앱 삭제나 브라우저 데이터 정리 전에는 반드시 백업하세요. 다른 기기와 합치려면 USB 동기화를 사용하세요. 백업 복원은 합치기가 아니라 교체입니다.</p>
+            </section>
+            {% endif %}
+            <section class="data-card queue-card" {% if independent %}hidden{% endif %}>
               <div class="card-heading"><div><span class="section-kicker">OUTBOX</span><h3>전송 대기</h3></div><span class="queue-number" id="pendingCount">0</span></div>
               <div id="pendingList" class="operation-list"></div>
             </section>
-            <section class="data-card queue-card conflict-card">
+            <section class="data-card queue-card conflict-card" {% if independent %}hidden{% endif %}>
               <div class="card-heading"><div><span class="section-kicker">REVIEW NEEDED</span><h3>충돌</h3></div><span class="queue-number danger" id="conflictCount">0</span></div>
               <div id="conflictList" class="operation-list"></div>
             </section>
           </div>
           <aside class="connect-guide" aria-label="다른 기기 연결 안내">
+            {% if independent %}
+            <span class="section-kicker">INSTALL APP</span>
+            <h3>이 기기에 앱 설치</h3>
+            <button class="button primary" id="installApp" type="button">앱 설치 안내</button>
+            <ol>
+              <li><div><strong>Android</strong><p>Chrome 메뉴에서 ‘앱 설치’ 또는 ‘홈 화면에 추가’를 선택하세요.</p></div></li>
+              <li><div><strong>iPhone · iPad</strong><p>Safari의 공유 메뉴에서 ‘홈 화면에 추가’를 선택하세요. 설치한 앱을 처음 한 번 열어 오프라인 준비를 완료하세요.</p></div></li>
+              <li><div><strong>컴퓨터</strong><p>Chrome 또는 Edge의 주소창 설치 버튼으로 설치하세요. 시작 메뉴에서 독립된 앱 창으로 실행할 수 있습니다.</p></div></li>
+            </ol>
+            <p class="guide-note" id="installationStatus" role="status">오프라인 실행에 필요한 파일을 준비하고 있습니다.</p>
+            <p class="guide-note">기기마다 빈 데이터로 시작합니다. 데이터 이동이 필요하면 백업 파일을 복원하세요.</p>
+            {% else %}
             <span class="section-kicker">CONNECT ANOTHER DEVICE</span>
             <h3>현장 기기를 연결하는 법</h3>
             <ol>
@@ -216,6 +252,7 @@
               <li><span><svg><use href="#i-check"></use></svg></span><div><strong>오프라인 앱 설치</strong><p>USB 연결의 localhost 주소 또는 신뢰된 HTTPS 주소에서 ‘앱 설치’를 선택하세요. 일반 Wi-Fi HTTP는 열린 화면에서만 오프라인 기록이 가능합니다.</p></div></li>
             </ol>
             <p class="guide-note">오프라인 작업은 이 기기에만 보관됩니다. 서버 연결 전에 브라우저 데이터를 삭제하지 마세요.</p>
+            {% endif %}
           </aside>
         </div>
       </section>
